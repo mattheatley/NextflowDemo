@@ -1,0 +1,116 @@
+Nextflow / Singularity Guidance
+
+Date: 2022/11/24
+
+Aim: to ensure Singularity correctly reproduces Docker containers within Nextflow Pipelines when run on UoN HPCC (Augusta)
+
+
+Background: The Augusta documentation recommends executing 'singularity-mod' instead of 'singularity', the former being an executable .sh script (see below) that sets permissions for newly created files prior to running 'singularity'. However, there seems to be no option to alter the Singularity executable path within Nextflow & it is often difficult to determine exactly how the different Nextflow options influence Singularity with regards to the main workflow (i.e. 'singularity pull...' vs individual processes (i.e. 'singularity exec...').
+
+
+
+CURRENT WORKING SOLUTION;
+
+# login to Augusta via login002 (the singularity dependency mksquashfs is installed on this node)
+ssh $USER@login002.augusta.nottingham.ac.uk
+
+
+
+# activate conda environment with nextflow installed
+
+source ~/.bash_profile
+
+conda activate nf-core_v2.6_env
+
+
+
+
+# load singularity
+
+module load singularity/3.4.2
+
+
+
+# remove singularity cache containing any previous layers pulled with default umask (0027)
+
+singularity cache clean -f
+
+
+
+# remove nextflow singularity cache containing any previous images pulled with default umask (0027)
+
+Default:
+
+workDir/singularity/
+
+Custom:
+
+(i) nextflow.config:
+
+singularity.cacheDir = cache_directory_name
+
+(ii) environment variable
+
+export NXF_SINGULARITY_CACHEDIR=/path/to/cache_directory_name
+
+
+
+# alter permissions for newly created files (default: umask 0027)
+
+umask 0022
+
+
+
+# specify beforeScript sections in nextflow.config (preferred) and/or workflow.nf (potentially limits interoperability)
+
+(i) nextflow.config:
+
+process.beforeScript = 'umask 0022'
+
+(i) workflow.nf:
+
+process PROCESS_NAME {
+
+   beforeScript 'umask 0022'
+
+   ...
+
+   }
+
+
+
+# run nextflow
+
+nextflow run ./path/to/NextflowWorkflow.nf -c ./path/to/Custom.config -profile augusta
+
+
+
+
+ADDITIONAL INFORMATION;
+
+
+singularity-mod.sh executable:
+
+START
+
+#!/bin/bash
+
+umask 0022
+
+/gpfs01/software/singularity/3.4.2/bin/singularity "$@"
+
+END
+
+
+Example Singularity commands executed within Nextflow:
+
+
+Workflow:
+
+singularity pull  --name IMAGE_NAME.img docker://DOCKER_USER/IMAGE_NAME:v1 > /dev/null
+
+
+Process:
+
+singularity [GLOBAL OPTIONS] exec [COMMAND OPTIONS] -B /launchDir /cacheDir/IMAGE_NAME.img /bin/bash -c "cd $PWD; eval $(nxf_container_env); /bin/bash -ue /workDir/hash/hash/.command.sh
+
